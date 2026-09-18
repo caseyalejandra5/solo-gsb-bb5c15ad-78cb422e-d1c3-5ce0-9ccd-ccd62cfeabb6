@@ -955,3 +955,76 @@ button.primary.danger:hover {
   font-weight: 600;
   word-break: break-all;
 }
+
+/* ---- 审计例外清单 ---- */
+.exception-panel h2 {
+  font-size: 15px;
+}
+
+.exception-table td {
+  vertical-align: top;
+}
+
+.exception-table select {
+  max-width: 200px;
+}
+
+.exception-table input[type='datetime-local'] {
+  min-width: 168px;
+}
+
+.exception-msg-row td {
+  padding: 2px 8px 10px 44px;
+}
+
+.exception-msg-row .msg {
+  font-size: 12px;
+  padding: 1px 0;
+}
+
+.exception-msg-row .msg.error {
+  color: var(--danger);
+}
+
+.exception-msg-row .msg.warn {
+  color: var(--warn);
+}
+
+.exception-msg-row .msg.muted {
+  color: var(--text-faint);
+}
+
+.exception-status-sub {
+  font-size: 11px;
+  margin-top: 3px;
+  line-height: 1.5;
+}
+
+.exception-import-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.badge.exempt-full {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border: 1px solid rgba(54, 192, 138, 0.35);
+}
+
+.badge.exempt-partial {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid rgba(232, 168, 56, 0.35);
+}
+
+.tag.exempted {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.tag.pending {
+  background: var(--warn-bg);
+  color: var(--warn);
+}

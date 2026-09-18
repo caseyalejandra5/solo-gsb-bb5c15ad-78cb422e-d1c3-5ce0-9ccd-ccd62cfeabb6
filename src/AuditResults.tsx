@@ -4,11 +4,28 @@ import type {
   AuditInvalidEntry,
   AuditReport,
   ExamplePacket,
+  ExactRegionGroup,
   MinExplanation,
 } from './audit/types'
+import type {
+  ExceptionEvaluation,
+  ExemptionReport,
+  RuleExemption,
+} from './audit/exemption'
+import { formatDateTime } from './audit/exemption'
 import { formatPacket, formatPercent, formatPortRange, formatSize } from './format'
 
-type Filter = 'all' | 'issues' | 'fully' | 'partial' | 'invalid' | 'disabled' | 'reachable'
+type Filter =
+  | 'all'
+  | 'issues'
+  | 'fully'
+  | 'partial'
+  | 'invalid'
+  | 'disabled'
+  | 'reachable'
+  | 'pending'
+  | 'exempt-partial'
+  | 'exempt-full'
 
 const STATUS_TEXT: Record<AuditEntry['status'], string> = {
   reachable: '可达',
@@ -49,6 +66,116 @@ function PacketLine({ packet }: { packet: ExamplePacket }) {
         → 命中 #{packet.matchedRuleIndex + 1} {packet.matchedRuleName}（{packet.action}）
       </span>
       <CopyButton text={formatPacket(packet)} />
+    </div>
+  )
+}
+
+/** 豁免 / 待处理区域的代表报文（标签可定制） */
+function ExemptPacketLine({
+  packet,
+  tag,
+  cls,
+}: {
+  packet: ExamplePacket
+  tag: string
+  cls: string
+}) {
+  return (
+    <div className="packet-box">
+      <span className={`tag ${cls}`}>{tag}</span>
+      <span>{formatPacket(packet)}</span>
+      <span className="arrow-note">
+        → 命中 #{packet.matchedRuleIndex + 1} {packet.matchedRuleName}（{packet.action}）
+      </span>
+      <CopyButton text={formatPacket(packet)} />
+    </div>
+  )
+}
+
+/** 精确区域：协议 → 连续端口段 × 规范 CIDR 列表（行式，互斥且完备） */
+function RegionRows({ regions }: { regions: ExactRegionGroup[] }) {
+  return (
+    <div className="code-list">
+      {regions.map((reg) => (
+        <div key={reg.protocol} className="line">
+          <strong>{reg.protocol}</strong>
+          <span className="muted-text">（{formatSize(reg.size)} 条报文空间）</span>
+          {reg.rows.map((row, i) => (
+            <div key={i} className="muted-text" style={{ paddingLeft: 12 }}>
+              端口 {formatPortRange(row.portStart, row.portEnd)} × {row.cidrs.join(', ')}
+              <span>（{formatSize(row.size)}）</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * 例外豁免块：生效例外与审计发现的实际遮蔽区域的精确交集。
+ * 仅做标记展示，不改变上方任何审计结论。
+ */
+function ExemptionBlock({
+  exemption,
+  evaluations,
+}: {
+  exemption: RuleExemption
+  evaluations: ExceptionEvaluation[]
+}) {
+  const covering = exemption.coveringExceptions
+    .map((i) => evaluations[i])
+    .filter((e): e is ExceptionEvaluation => e !== undefined && e.normalized !== null)
+  return (
+    <div className="detail-block" style={{ marginTop: 14 }}>
+      <h3>
+        例外豁免（{covering.length} 条生效例外 · 来自审计例外清单，仅标记不改变审计结论）
+      </h3>
+      <div>
+        {covering.map((ev) => (
+          <div className="source-row" key={ev.id}>
+            <span className="tag exempted">生效例外</span>
+            <span>{ev.normalized!.note.trim() || '（未填写说明）'}</span>
+            <span className="muted-text">
+              {ev.normalized!.cidrText} · 端口{' '}
+              {formatPortRange(ev.normalized!.portStart, ev.normalized!.portEnd)} ·{' '}
+              {ev.normalized!.protocol} · {formatDateTime(ev.normalized!.expiresAtMs)} 到期
+            </span>
+            <span className="spacer" />
+            <span className="muted-text">豁免 {formatSize(ev.coveredSize)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="detail-grid" style={{ marginTop: 10 }}>
+        <div className="detail-block">
+          <h3>已豁免区域（{formatSize(exemption.exemptedSize)} 条报文空间）</h3>
+          <RegionRows regions={exemption.exemptedRegions} />
+          {exemption.exemptedExample && (
+            <ExemptPacketLine
+              packet={exemption.exemptedExample}
+              tag="已豁免"
+              cls="exempted"
+            />
+          )}
+        </div>
+        <div className="detail-block">
+          <h3>待处理区域（{formatSize(exemption.remainingSize)} 条报文空间）</h3>
+          {exemption.remainingSize === 0 ? (
+            <div className="code-list">
+              <div className="line muted-text">无 —— 遮蔽区域已被生效例外全部豁免</div>
+            </div>
+          ) : (
+            <RegionRows regions={exemption.remainingRegions} />
+          )}
+          {exemption.remainingExample && (
+            <ExemptPacketLine
+              packet={exemption.remainingExample}
+              tag="待处理"
+              cls="pending"
+            />
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -110,7 +237,15 @@ function MinExplanationBlock({ min }: { min: MinExplanation }) {
   )
 }
 
-function ValidEntry({ entry }: { entry: AuditEntry }) {
+function ValidEntry({
+  entry,
+  exemption,
+  evaluations,
+}: {
+  entry: AuditEntry
+  exemption?: RuleExemption
+  evaluations: ExceptionEvaluation[]
+}) {
   const [open, setOpen] = useState(
     entry.status === 'fully-shadowed' || entry.status === 'disabled',
   )
@@ -166,6 +301,19 @@ function ValidEntry({ entry }: { entry: AuditEntry }) {
         {entry.collectiveCover && (
           <span className="collective-tag" title="没有任何单条前序规则可独立遮蔽它，由多条规则的并集共同覆盖">
             共同覆盖
+          </span>
+        )}
+        {exemption?.status === 'full' && (
+          <span className="badge exempt-full" title="遮蔽区域已被生效例外全部豁免（审计结论不变）">
+            已豁免
+          </span>
+        )}
+        {exemption?.status === 'partial' && (
+          <span
+            className="badge exempt-partial"
+            title="部分遮蔽区域被生效例外豁免，仍有待处理区域（审计结论不变）"
+          >
+            部分豁免
           </span>
         )}
         <span className="spacer" />
@@ -237,6 +385,10 @@ function ValidEntry({ entry }: { entry: AuditEntry }) {
 
           {entry.minExplanation && <MinExplanationBlock min={entry.minExplanation} />}
 
+          {exemption && exemption.exemptedSize > 0 && (
+            <ExemptionBlock exemption={exemption} evaluations={evaluations} />
+          )}
+
           <div className="detail-grid" style={{ marginTop: 14 }}>
             {entry.reachableExample && (
               <div className="detail-block">
@@ -298,9 +450,18 @@ const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: 'reachable', label: '可达' },
   { key: 'disabled', label: '停用' },
   { key: 'invalid', label: '非法' },
+  { key: 'pending', label: '有待处理' },
+  { key: 'exempt-partial', label: '部分豁免' },
+  { key: 'exempt-full', label: '全部豁免' },
 ]
 
-export function AuditResults({ report }: { report: AuditReport }) {
+export function AuditResults({
+  report,
+  exemptions,
+}: {
+  report: AuditReport
+  exemptions: ExemptionReport
+}) {
   const [filter, setFilter] = useState<Filter>('all')
 
   const entries = report.entries.filter((e) => {
@@ -315,6 +476,15 @@ export function AuditResults({ report }: { report: AuditReport }) {
     if (filter === 'fully') return e.kind === 'valid' && e.status === 'fully-shadowed'
     if (filter === 'partial') return e.kind === 'valid' && e.status === 'partial-shadowed'
     if (filter === 'disabled') return e.kind === 'valid' && e.status === 'disabled'
+    // 豁免状态筛选（来自审计例外清单，与审计结论正交）
+    if (filter === 'pending')
+      return (
+        e.kind === 'valid' && (exemptions.byRule.get(e.id)?.remainingSize ?? 0) > 0
+      )
+    if (filter === 'exempt-partial')
+      return e.kind === 'valid' && exemptions.byRule.get(e.id)?.status === 'partial'
+    if (filter === 'exempt-full')
+      return e.kind === 'valid' && exemptions.byRule.get(e.id)?.status === 'full'
     return true
   })
 
@@ -336,7 +506,12 @@ export function AuditResults({ report }: { report: AuditReport }) {
       )}
       {entries.map((entry) =>
         entry.kind === 'valid' ? (
-          <ValidEntry key={`${entry.index}-${entry.id}`} entry={entry} />
+          <ValidEntry
+            key={`${entry.index}-${entry.id}`}
+            entry={entry}
+            exemption={exemptions.byRule.get(entry.id)}
+            evaluations={exemptions.evaluations}
+          />
         ) : (
           <InvalidEntry key={`${entry.index}-${entry.id}`} entry={entry} />
         ),

@@ -1,3 +1,5 @@
+# 一条命令启动：docker compose up -d --build
+# 启动后访问 http://localhost:8080（停止：docker compose down）
 services:
   audit-console:
     build: .

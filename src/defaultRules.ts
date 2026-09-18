@@ -1,4 +1,6 @@
 import type { RuleInput } from './audit/types'
+import { toLocalDateTimeInput } from './audit/exemption'
+import type { ExceptionInput } from './audit/exemption'
 
 /** 首启动演示规则集：覆盖可达、部分遮蔽、完全遮蔽、共同覆盖、非法等情形 */
 export function createDemoRules(): RuleInput[] {
@@ -26,5 +28,48 @@ export function createDemoRules(): RuleInput[] {
     r({ name: '已停用：临时下线的旧规则（不参与分析）', cidr: '203.0.113.0/24', portStart: '3306', portEnd: '3306', protocol: 'TCP', action: 'deny', enabled: false }),
     r({ name: '非法 CIDR（不参与分析）', cidr: '10.0.0.5/24', action: 'allow' }),
     r({ name: '非法端口（不参与分析）', cidr: '10.1.0.0/16', portStart: '99999', portEnd: '5', protocol: 'TCP', action: 'allow' }),
+  ]
+}
+
+/**
+ * 首启动演示例外集：覆盖全部豁免、部分豁免、已过期三种情形。
+ * 引用演示规则的稳定 id（demo-N）；到期时间相对生成时刻，保证演示时两条生效。
+ */
+export function createDemoExceptions(now: Date = new Date()): ExceptionInput[] {
+  const in30d = toLocalDateTimeInput(now.getTime() + 30 * 24 * 3600 * 1000)
+  return [
+    {
+      id: 'demo-ex-0',
+      ruleId: 'demo-4',
+      issueType: 'partial-shadowed',
+      cidr: '10.0.0.0/8',
+      portStart: '1024',
+      portEnd: '8080',
+      protocol: 'TCP',
+      expiresAt: in30d,
+      note: '演示：办公网高端口段遮蔽属预期，临时豁免 30 天（全部豁免）',
+    },
+    {
+      id: 'demo-ex-1',
+      ruleId: 'demo-7',
+      issueType: 'fully-shadowed',
+      cidr: '172.16.0.0/25',
+      portStart: '0',
+      portEnd: '1024',
+      protocol: 'UDP',
+      expiresAt: in30d,
+      note: '演示：/24 低半段的共同覆盖已确认，仅豁免该半段（部分豁免）',
+    },
+    {
+      id: 'demo-ex-2',
+      ruleId: 'demo-3',
+      issueType: 'fully-shadowed',
+      cidr: '192.168.1.0/24',
+      portStart: '22',
+      portEnd: '22',
+      protocol: 'TCP',
+      expiresAt: '2020-01-01T00:00',
+      note: '演示：已过期的例外不参与豁免',
+    },
   ]
 }

@@ -5,12 +5,19 @@ import { GoalVerify } from './GoalVerify'
 import { SimplifyPanel } from './SimplifyPanel'
 import { RegressionPanel } from './RegressionPanel'
 import { AttributionPanel } from './AttributionPanel'
+import { ExceptionPanel } from './ExceptionPanel'
 import { ImportModal, ExportModal } from './Modals'
 import { ReorderPreviewModal } from './ReorderPreviewModal'
 import { audit, exportReport, newRuleInput, parseRulesJson } from './audit/engine'
+import {
+  computeExemptions,
+  newExceptionInput,
+  parseExceptionsJson,
+} from './audit/exemption'
+import type { ExceptionInput } from './audit/exemption'
 import { movedRules } from './audit/reorder'
 import type { RuleInput } from './audit/types'
-import { createDemoRules } from './defaultRules'
+import { createDemoExceptions, createDemoRules } from './defaultRules'
 import { formatSize } from './format'
 import './styles.css'
 
@@ -20,6 +27,9 @@ interface PendingReorder {
 
 export default function App() {
   const [rules, setRules] = useState<RuleInput[]>(() => createDemoRules())
+  const [exceptions, setExceptions] = useState<ExceptionInput[]>(() =>
+    createDemoExceptions(),
+  )
   const [showImport, setShowImport] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [pendingReorder, setPendingReorder] = useState<PendingReorder | null>(null)
@@ -27,6 +37,11 @@ export default function App() {
 
   const report = useMemo(() => audit(rules), [rules])
   const exportJson = useMemo(() => exportReport(report), [report])
+  // 规则或例外任何编辑都自动重算豁免交集（评估基准时间取重算时刻）
+  const exemptionReport = useMemo(
+    () => computeExemptions(rules, exceptions, new Date()),
+    [rules, exceptions],
+  )
 
   const patchRule = (index: number, patch: Partial<RuleInput>) =>
     setRules((rs) => rs.map((r, i) => (i === index ? { ...r, ...patch } : r)))
@@ -76,6 +91,27 @@ export default function App() {
     return ok
   }
 
+  // 例外清单按数组下标编辑（清单只在本页即时编辑，无快照引用）
+  const patchException = (index: number, patch: Partial<ExceptionInput>) =>
+    setExceptions((xs) => xs.map((x, i) => (i === index ? { ...x, ...patch } : x)))
+
+  const removeException = (index: number) =>
+    setExceptions((xs) => xs.filter((_, i) => i !== index))
+
+  const addException = () => setExceptions((xs) => [...xs, newExceptionInput(rules)])
+
+  const handleImportExceptions = (text: string, mode: 'replace' | 'append'): string[] => {
+    const { exceptions: parsed, errors } = parseExceptionsJson(text)
+    if (parsed.length === 0) return errors.length ? errors : ['未找到任何例外']
+    setExceptions((xs) => (mode === 'replace' ? parsed : [...xs, ...parsed]))
+    const ok: string[] = []
+    if (errors.length > 0) {
+      setNotice(`导入 ${parsed.length} 条例外；${errors.length} 条记录有提示：${errors[0]}${errors.length > 1 ? ' 等' : ''}`)
+      setTimeout(() => setNotice(null), 5000)
+    }
+    return ok
+  }
+
   const s = report.stats
 
   return (
@@ -115,9 +151,12 @@ export default function App() {
         </button>
         <button
           className="ghost"
-          onClick={() => setRules(createDemoRules())}
+          onClick={() => {
+            setRules(createDemoRules())
+            setExceptions(createDemoExceptions())
+          }}
         >
-          恢复演示规则
+          恢复演示数据
         </button>
       </div>
 
@@ -184,17 +223,31 @@ export default function App() {
       </div>
 
       <div className="section-gap">
+        <ExceptionPanel
+          rules={rules}
+          exceptions={exceptions}
+          report={exemptionReport}
+          onPatch={patchException}
+          onRemove={removeException}
+          onAdd={addException}
+          onImport={handleImportExceptions}
+          onClear={() => setExceptions([])}
+        />
+      </div>
+
+      <div className="section-gap">
         <h2>审计结果</h2>
         <p className="legend" style={{ marginTop: -6, marginBottom: 10 }}>
           遮蔽仅考虑位于其上方（更早匹配）的规则；「共同覆盖」表示没有任何单条规则能独立遮蔽全部区域，
           需多条规则的并集才会使其失效。点击条目可展开可达区域、遮蔽来源与示例报文。
+          「已豁免 / 部分豁免」标记来自审计例外清单，仅表示遮蔽区域被生效例外覆盖，不改变审计结论。
         </p>
         {rules.length === 0 ? (
           <div className="notice info">
             还没有规则。点击「新增规则」或「粘贴 JSON 导入」开始。
           </div>
         ) : (
-          <AuditResults report={report} />
+          <AuditResults report={report} exemptions={exemptionReport} />
         )}
       </div>
 
