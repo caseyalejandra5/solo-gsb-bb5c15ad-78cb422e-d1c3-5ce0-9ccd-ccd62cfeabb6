@@ -1,14 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { RuleTable } from './RuleTable'
 import { AuditResults } from './AuditResults'
 import { GoalVerify } from './GoalVerify'
 import { SimplifyPanel } from './SimplifyPanel'
 import { RegressionPanel } from './RegressionPanel'
 import { AttributionPanel } from './AttributionPanel'
+import { ExceptionPanel } from './ExceptionPanel'
 import { ImportModal, ExportModal } from './Modals'
+import { ImportExceptionsModal } from './ExceptionImportModal'
 import { ReorderPreviewModal } from './ReorderPreviewModal'
 import { audit, exportReport, newRuleInput, parseRulesJson } from './audit/engine'
 import { movedRules } from './audit/reorder'
+import { parseExceptionsJson, serializeExceptions, evaluateExceptions } from './audit/exemption'
+import type { ExceptionInput } from './audit/exemption'
 import type { RuleInput } from './audit/types'
 import { createDemoRules } from './defaultRules'
 import { formatSize } from './format'
@@ -20,13 +24,26 @@ interface PendingReorder {
 
 export default function App() {
   const [rules, setRules] = useState<RuleInput[]>(() => createDemoRules())
+  const [exceptions, setExceptions] = useState<ExceptionInput[]>([])
   const [showImport, setShowImport] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [showImportExceptions, setShowImportExceptions] = useState(false)
   const [pendingReorder, setPendingReorder] = useState<PendingReorder | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const report = useMemo(() => audit(rules), [rules])
   const exportJson = useMemo(() => exportReport(report), [report])
+  // 每分钟重估一次，使跨过到期时刻的例外在结果区也自动转为过期 / 待处理
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+  // 豁免重算随规则编辑 / 例外清单变更自动进行；审计结论本身不变
+  const exemptionReport = useMemo(
+    () => evaluateExceptions(rules, exceptions),
+    [rules, exceptions, tick],
+  )
 
   const patchRule = (index: number, patch: Partial<RuleInput>) =>
     setRules((rs) => rs.map((r, i) => (i === index ? { ...r, ...patch } : r)))
@@ -76,6 +93,21 @@ export default function App() {
     return ok
   }
 
+  // 例外清单导入：非法 / 过期条目不阻止导入（保留在清单中明确标注），
+  // 结构 / JSON 错误通过返回值在弹窗内提示
+  const handleImportExceptions = (text: string, mode: 'replace' | 'append'): string[] => {
+    const { exceptions: parsed, errors } = parseExceptionsJson(text)
+    if (parsed.length === 0) return errors.length ? errors : ['未找到任何例外条目']
+    setExceptions((prev) => (mode === 'replace' ? parsed : [...prev, ...parsed]))
+    if (errors.length > 0) {
+      setNotice(`导入 ${parsed.length} 条例外；提示：${errors[0]}${errors.length > 1 ? ' 等' : ''}`)
+      setTimeout(() => setNotice(null), 5000)
+    }
+    return []
+  }
+
+  const exportExceptionsJson = () => serializeExceptions(exceptions)
+
   const s = report.stats
 
   return (
@@ -104,6 +136,25 @@ export default function App() {
           }}
         >
           导出规则（可再导入）
+        </button>
+        <button onClick={() => setShowImportExceptions(true)}>
+          导入审计例外 JSON
+        </button>
+        <button
+          onClick={() => {
+            const blob = new Blob([exportExceptionsJson()], {
+              type: 'application/json',
+            })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = 'audit-exceptions.json'
+            a.click()
+            URL.revokeObjectURL(url)
+          }}
+          disabled={exceptions.length === 0}
+        >
+          导出审计例外
         </button>
         <button
           className="danger ghost"
@@ -184,17 +235,27 @@ export default function App() {
       </div>
 
       <div className="section-gap">
+        <ExceptionPanel
+          rules={rules}
+          auditReport={report}
+          exceptions={exceptions}
+          setExceptions={setExceptions}
+        />
+      </div>
+
+      <div className="section-gap">
         <h2>审计结果</h2>
         <p className="legend" style={{ marginTop: -6, marginBottom: 10 }}>
           遮蔽仅考虑位于其上方（更早匹配）的规则；「共同覆盖」表示没有任何单条规则能独立遮蔽全部区域，
           需多条规则的并集才会使其失效。点击条目可展开可达区域、遮蔽来源与示例报文。
+          「审计例外清单」中的有效例外仅在此额外标注豁免状态，<strong>不改变下列审计结论</strong>。
         </p>
         {rules.length === 0 ? (
           <div className="notice info">
             还没有规则。点击「新增规则」或「粘贴 JSON 导入」开始。
           </div>
         ) : (
-          <AuditResults report={report} />
+          <AuditResults report={report} exemptionReport={exemptionReport} />
         )}
       </div>
 
@@ -206,6 +267,12 @@ export default function App() {
       )}
       {showExport && (
         <ExportModal json={exportJson} onClose={() => setShowExport(false)} />
+      )}
+      {showImportExceptions && (
+        <ImportExceptionsModal
+          onClose={() => setShowImportExceptions(false)}
+          onImport={handleImportExceptions}
+        />
       )}
       {pendingReorder && (
         <ReorderPreviewModal

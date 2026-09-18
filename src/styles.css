@@ -955,3 +955,146 @@ button.primary.danger:hover {
   font-weight: 600;
   word-break: break-all;
 }
+
+/* ---- 审计例外清单 ---- */
+.exception-panel h2 {
+  font-size: 15px;
+}
+
+.exception-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.exception-toolbar .file-btn {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.exception-toolbar .file-btn:hover {
+  border-color: var(--accent);
+}
+
+.exception-form {
+  background: var(--panel-2);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 10px 0 16px;
+}
+
+.exception-form h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.exception-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px 14px;
+}
+
+.exception-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.exception-form-grid label.exception-form-notes {
+  grid-column: 1 / -1;
+}
+
+.exception-form-grid input,
+.exception-form-grid select {
+  width: 100%;
+}
+
+.exception-table th,
+.exception-table td {
+  vertical-align: top;
+}
+
+.exception-table tr.except-row-invalid,
+.exception-table tr.except-row-invalid td {
+  background: rgba(239, 95, 111, 0.06);
+}
+
+.except-row {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin: 8px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.except-row.except-row-invalid {
+  border-color: rgba(239, 95, 111, 0.45);
+  background: rgba(239, 95, 111, 0.05);
+}
+
+/* 豁免徽章 */
+.badge.exempt-badge {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border: 1px solid rgba(54, 192, 138, 0.35);
+}
+
+.badge.exempt-partial-badge {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid rgba(232, 168, 56, 0.4);
+}
+
+.badge.exempt-pending-badge {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid rgba(239, 95, 111, 0.35);
+}
+
+.entry.entry-exempt-full {
+  border-left: 3px solid var(--ok);
+}
+
+.entry.entry-exempt-partial {
+  border-left: 3px solid var(--warn);
+}
+
+.exemption-block {
+  border: 1px solid rgba(54, 192, 138, 0.3);
+  background: rgba(54, 192, 138, 0.04);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.exemption-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.detail-block.exempt-block-ok {
+  border-left: 2px solid rgba(54, 192, 138, 0.4);
+  padding-left: 10px;
+}
+
+.detail-block.exempt-block-pending {
+  border-left: 2px solid rgba(239, 95, 111, 0.4);
+  padding-left: 10px;
+}

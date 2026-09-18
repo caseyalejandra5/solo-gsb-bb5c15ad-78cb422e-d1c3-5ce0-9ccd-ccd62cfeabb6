@@ -6,8 +6,11 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 
-# 拷贝源码并构建静态产物
+# 拷贝源码并在镜像构建期跑一遍确定性自检，避免把回归带进镜像
 COPY . .
+RUN npm test
+
+# 构建静态产物
 RUN npm run build
 
 # ---- 运行阶段：nginx 托管 ----
